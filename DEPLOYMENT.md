@@ -24,7 +24,7 @@ This project combines a React/Vite frontend with a Python FastAPI backend in a m
 Create a `.env` file in the project root with the following variables:
 
 ```bash
-# Required
+# Required for Backend
 GOOGLE_API_KEY=your_google_gemini_api_key_here
 GITHUB_TOKEN=your_github_personal_access_token_here
 
@@ -32,6 +32,8 @@ GITHUB_TOKEN=your_github_personal_access_token_here
 DATABASE_URL=your_database_url_here  # For future database integration
 PORT=8080  # Default port for the server
 ```
+
+**Important:** The frontend no longer requires any API keys. It calls the Python backend at `/api/chat`, which securely handles all Gemini API interactions.
 
 ### Getting API Keys
 
@@ -50,21 +52,40 @@ pip install -r requirements.txt
 npm install
 ```
 
-### 2. Build Frontend
+### 2. Set Up Environment Variables
+
+Create a `.env` file in the project root:
 
 ```bash
-npm run build
+GOOGLE_API_KEY=your_google_gemini_api_key_here
+GITHUB_TOKEN=your_github_personal_access_token_here
 ```
 
-This creates a `dist/` directory with the compiled frontend assets.
+### 3. Run Development Mode (Frontend + Backend)
 
-### 3. Run the Backend Server
+**Option A: Run both simultaneously (recommended)**
+
+Terminal 1 - Start the backend:
+```bash
+python app.py
+# Or use uvicorn with auto-reload:
+# uvicorn app:app --reload --host 0.0.0.0 --port 8080
+```
+
+Terminal 2 - Start the frontend dev server:
+```bash
+npm run dev
+```
+
+The frontend dev server (port 3000) will proxy API requests to the backend (port 8080).
+
+**Option B: Run production build**
 
 ```bash
-# Development mode with auto-reload
-uvicorn app:app --reload --host 0.0.0.0 --port 8080
+# Build the frontend first
+npm run build
 
-# Or run directly with Python
+# Then start the backend (which serves the built frontend)
 python app.py
 ```
 
@@ -240,9 +261,10 @@ Returns Jacob's career milestones with:
 
 ### API Key errors
 
-1. Verify environment variables are set correctly
+1. Verify the `GOOGLE_API_KEY` environment variable is set in Cloud Run
 2. Check API key validity on Google AI Studio
-3. For GitHub, ensure token has correct scopes
+3. For GitHub, ensure token has correct scopes (`read:user` and `repo`)
+4. The frontend does not need any API keys - it calls the backend at `/api/chat`
 
 ### Docker build fails
 
