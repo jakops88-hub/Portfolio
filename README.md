@@ -4,17 +4,43 @@
 
 # Run and deploy your AI Studio app
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/drive/1lfAv-P9YjZZBbB-v0g7ubywTOp3W83sB
+This is a Digital Twin Portfolio combining React frontend with Python FastAPI backend.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js and Python 3.10+
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+   ```bash
+   npm install
+   pip install -r requirements.txt
+   ```
+
+2. Set environment variables:
+   Create a `.env` file with:
+   ```bash
+   GOOGLE_API_KEY=your_google_gemini_api_key_here
+   GITHUB_TOKEN=your_github_personal_access_token_here
+   ```
+
 3. Run the app:
-   `npm run dev`
+   ```bash
+   # Option A: Development mode (frontend dev server + backend)
+   # Terminal 1:
+   python app.py
+   # Terminal 2:
+   npm run dev
+   # Visit http://localhost:3000
+
+   # Option B: Production mode (built frontend served by backend)
+   npm run build
+   python app.py
+   # Visit http://localhost:8080
+   ```
+
+## Deploy to Cloud Run
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+
+**Required Cloud Run Environment Variable:**
+- `GOOGLE_API_KEY` - Your Google Gemini API key
