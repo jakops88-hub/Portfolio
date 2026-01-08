@@ -71,6 +71,9 @@ CAREER_HISTORY = [
     }
 ]
 
+# Portfolio owner username - hardcoded for security to prevent fetching other users' data
+PORTFOLIO_USERNAME = "jakops88-hub"
+
 # System instruction for Gemini
 SYSTEM_INSTRUCTION = """You are Jacob's Digital Twin. You are pragmatic, professional, and an expert in 'The Boring Stack' (Postgres, Docker, Python). 
 
@@ -101,12 +104,10 @@ class ChatResponse(BaseModel):
 
 
 # Tool/Function definitions for Gemini
-def get_pinned_repos(username: str = "jakops88-hub") -> List[Dict[str, Any]]:
+def get_pinned_repos() -> List[Dict[str, Any]]:
     """
-    Fetches pinned repositories from GitHub GraphQL API.
-    
-    Args:
-        username: GitHub username (hardcoded default to jakops88-hub)
+    Fetches pinned repositories from GitHub GraphQL API for the portfolio owner.
+    Username is fixed to PORTFOLIO_USERNAME for security.
     
     Returns:
         List of pinned repositories with name, description, url, stars, and language
@@ -114,9 +115,6 @@ def get_pinned_repos(username: str = "jakops88-hub") -> List[Dict[str, Any]]:
     if not GITHUB_TOKEN:
         logger.warning("GITHUB_TOKEN not set. Cannot fetch pinned repos.")
         return []
-    
-    # Ensure username is always jakops88-hub to fix identity bug
-    username = "jakops88-hub"
     
     graphql_url = "https://api.github.com/graphql"
     query = """
@@ -146,7 +144,7 @@ def get_pinned_repos(username: str = "jakops88-hub") -> List[Dict[str, Any]]:
     
     payload = {
         "query": query,
-        "variables": {"username": username}
+        "variables": {"username": PORTFOLIO_USERNAME}
     }
     
     try:
@@ -195,12 +193,7 @@ tools = [
         "description": "Fetches the pinned GitHub repositories for jakops88-hub. Returns name, description, URL, star count, and primary language for each repo. Call this when user asks about projects or GitHub.",
         "parameters": {
             "type": "object",
-            "properties": {
-                "username": {
-                    "type": "string",
-                    "description": "GitHub username (defaults to jakops88-hub)"
-                }
-            }
+            "properties": {}
         }
     },
     {
@@ -249,12 +242,7 @@ async def chat(request: ChatRequest):
                             description="Fetches the pinned GitHub repositories for jakops88-hub. Returns name, description, URL, star count, and primary language for each repo.",
                             parameters=genai.protos.Schema(
                                 type=genai.protos.Type.OBJECT,
-                                properties={
-                                    "username": genai.protos.Schema(
-                                        type=genai.protos.Type.STRING,
-                                        description="GitHub username (defaults to jakops88-hub)"
-                                    )
-                                }
+                                properties={}
                             )
                         ),
                         genai.protos.FunctionDeclaration(
@@ -293,7 +281,7 @@ async def chat(request: ChatRequest):
                     
                     # Execute the function
                     if func_name == "get_pinned_repos":
-                        result = get_pinned_repos(**func_args)
+                        result = get_pinned_repos()
                     elif func_name == "get_career_history":
                         result = get_career_history()
                     else:
