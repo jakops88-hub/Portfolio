@@ -2,7 +2,7 @@ import { ChatMessage } from '../types';
 
 /**
  * Sends a message to the Python backend's /api/chat endpoint
- * The backend handles Gemini API calls with function calling support
+ * The backend handles all Gemini API interactions including system prompts and function calling
  */
 export const sendMessageToGemini = async (message: string, history: ChatMessage[] = []): Promise<string> => {
   try {
