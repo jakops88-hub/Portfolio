@@ -232,7 +232,7 @@ async def chat(request: ChatRequest):
     try:
         # Initialize the model with function calling
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest",
+            model_name="gemini-1.5-flash",
             system_instruction=SYSTEM_INSTRUCTION,
             tools=[
                 genai.protos.Tool(
