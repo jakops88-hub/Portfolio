@@ -178,7 +178,7 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not configured")
     
     try:
-        # FIX 1: Använd exakt versionsnamn för att undvika 404
+        # Modellnamn fixat till 001
         model = genai.GenerativeModel(
             model_name="gemini-1.5-flash-001",
             system_instruction=SYSTEM_INSTRUCTION,
@@ -200,25 +200,27 @@ async def chat(request: ChatRequest):
             ]
         )
         
-        # FIX 2: Konvertera historik från Frontend till Gemini-format
+        # Konvertera historik korrekt
         gemini_history = []
         for msg in request.history:
-            role = "user" if msg["role"] == "user" else "model"
-            gemini_history.append({"role": role, "parts": [msg["content"]]})
+            if msg.get("content"):
+                gemini_history.append({
+                    "role": msg.get("role"),
+                    "parts": [msg.get("content")]
+                })
 
         # Starta chatten MED historik
         chat_session = model.start_chat(history=gemini_history)
         
-        # Skicka meddelande
         response = chat_session.send_message(request.message)
         
-        # Hantera funktionsanrop
         function_calls = []
         final_response = ""
         
         if response.candidates and response.candidates[0].content.parts:
             for part in response.candidates[0].content.parts:
-                if hasattr(part, 'function_call') andZC(part.function_call): # Check existence
+                # Syntaxfelet fixat här nere!
+                if hasattr(part, 'function_call') and part.function_call:
                     func_call = part.function_call
                     func_name = func_call.name
                     logger.info(f"Calling tool: {func_name}")
@@ -236,7 +238,6 @@ async def chat(request: ChatRequest):
                         "result": result
                     })
                     
-                    # Skicka tillbaka resultatet till modellen
                     function_response = genai.protos.Part(
                         function_response=genai.protos.FunctionResponse(
                             name=func_name,
@@ -256,13 +257,12 @@ async def chat(request: ChatRequest):
     
     except Exception as e:
         logger.error(f"Chat error: {str(e)}", exc_info=True)
-        # DEBUG: Om modellen inte hittas, logga vilka som finns
+        # Felsökning: Lista modeller om det skiter sig igen
         try:
             available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
             logger.info(f"Available models: {available}")
         except:
             pass
-            
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
