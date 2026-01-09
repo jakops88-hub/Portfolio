@@ -217,6 +217,27 @@ async def health_check():
     }
 
 
+@app.get("/api/models")
+async def list_models():
+    """List available Gemini models for debugging"""
+    if not GOOGLE_API_KEY:
+        raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not configured")
+    
+    try:
+        models = genai.list_models()
+        available = []
+        for model in models:
+            available.append({
+                "name": model.name,
+                "display_name": model.display_name,
+                "supported_methods": model.supported_generation_methods
+            })
+        return {"models": available}
+    except Exception as e:
+        logger.error(f"Error listing models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """
@@ -230,33 +251,58 @@ async def chat(request: ChatRequest):
         )
     
     try:
-        # Initialize the model with function calling
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest",
-            system_instruction=SYSTEM_INSTRUCTION,
-            tools=[
-                genai.protos.Tool(
-                    function_declarations=[
-                        genai.protos.FunctionDeclaration(
-                            name="get_pinned_repos",
-                            description="Fetches the pinned GitHub repositories for jakops88-hub. Returns name, description, URL, star count, and primary language for each repo.",
-                            parameters=genai.protos.Schema(
-                                type=genai.protos.Type.OBJECT,
-                                properties={}
-                            )
-                        ),
-                        genai.protos.FunctionDeclaration(
-                            name="get_career_history",
-                            description="Returns Jacob's career history including roles, companies, periods, and descriptions.",
-                            parameters=genai.protos.Schema(
-                                type=genai.protos.Type.OBJECT,
-                                properties={}
-                            )
-                        )
-                    ]
+        # Try different model names - use the first one that works
+        model_names = [
+            "models/gemini-1.5-flash",
+            "models/gemini-1.5-flash-001",
+            "gemini-1.5-flash-001",
+            "models/gemini-1.5-pro",
+            "gemini-1.5-pro"
+        ]
+        
+        model = None
+        working_model_name = None
+        
+        for model_name in model_names:
+            try:
+                # Define tools using the correct format for google-generativeai 0.8.x
+                # Use dictionary format instead of genai.protos
+                model = genai.GenerativeModel(
+                    model_name=model_name,
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    tools=[{
+                        "function_declarations": [
+                            {
+                                "name": "get_pinned_repos",
+                                "description": "Fetches the pinned GitHub repositories for jakops88-hub. Returns name, description, URL, star count, and primary language for each repo.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {}
+                                }
+                            },
+                            {
+                                "name": "get_career_history",
+                                "description": "Returns Jacob's career history including roles, companies, periods, and descriptions.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {}
+                                }
+                            }
+                        ]
+                    }]
                 )
-            ]
-        )
+                working_model_name = model_name
+                logger.info(f"Successfully initialized model: {model_name}")
+                break
+            except Exception as e:
+                logger.warning(f"Failed to initialize model {model_name}: {e}")
+                continue
+        
+        if not model:
+            raise HTTPException(
+                status_code=500,
+                detail="Could not initialize any Gemini model. Check API key and model availability."
+            )
         
         # Start a chat session
         chat_session = model.start_chat(history=[])
@@ -293,16 +339,20 @@ async def chat(request: ChatRequest):
                         "result": result
                     })
                     
-                    # Send the function result back to the model
-                    function_response = genai.protos.Part(
-                        function_response=genai.protos.FunctionResponse(
-                            name=func_name,
-                            response={"result": result}
-                        )
-                    )
+                    # Send the function result back using the correct format for 0.8.x
+                    # Use dictionary format instead of genai.protos
+                    function_response_content = {
+                        "role": "function",
+                        "parts": [{
+                            "function_response": {
+                                "name": func_name,
+                                "response": {"result": result}
+                            }
+                        }]
+                    }
                     
                     # Get the final response with function results
-                    final_response_obj = chat_session.send_message(function_response)
+                    final_response_obj = chat_session.send_message(function_response_content)
                     final_response = final_response_obj.text
                 
                 elif hasattr(part, 'text') and part.text:
@@ -317,6 +367,8 @@ async def chat(request: ChatRequest):
             function_calls=function_calls if function_calls else None
         )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Chat error: {str(e)}", exc_info=True)
         raise HTTPException(
