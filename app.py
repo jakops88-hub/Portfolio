@@ -35,7 +35,7 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
-# --- DYNAMISK MODELL-VÄLJARE (LÖSNINGEN) ---
+# --- DYNAMISK MODELL-VÄLJARE (Fixar 404-felet) ---
 def get_best_model_name():
     """Hittar en fungerande modell automatiskt istället för att gissa."""
     if not GOOGLE_API_KEY:
@@ -45,13 +45,11 @@ def get_best_model_name():
         available_models = []
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
-                # Ta bort 'models/' prefixet om det finns, för säkerhets skull
                 clean_name = m.name.replace("models/", "")
                 available_models.append(clean_name)
         
         logger.info(f"Found models: {available_models}")
 
-        # Prioriteringslista
         priorities = [
             "gemini-1.5-flash", 
             "gemini-1.5-flash-001", 
@@ -60,27 +58,22 @@ def get_best_model_name():
             "gemini-pro"
         ]
 
-        # 1. Försök hitta en exakt matchning från vår önskelista
         for p in priorities:
             if p in available_models:
                 logger.info(f"Selected priority model: {p}")
                 return p
 
-        # 2. Om ingen exakt matchning, ta första bästa som innehåller 'flash'
         for m in available_models:
             if "flash" in m:
                 logger.info(f"Selected fallback flash model: {m}")
                 return m
 
-        # 3. Nödlösning: Ta första tillgängliga modellen
         if available_models:
-            logger.info(f"Selected fallback generic model: {available_models[0]}")
             return available_models[0]
             
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
     
-    # Om allt skiter sig, gissa på standard
     return "gemini-1.5-flash"
 
 # Välj modell vid start
@@ -89,12 +82,14 @@ logger.info(f"🚀 SYSTEM STARTUP: Using model '{CURRENT_MODEL_NAME}'")
 
 
 PORTFOLIO_USERNAME = "jakops88-hub"
-SYSTEM_INSTRUCTION = """You are Jacob's Digital Twin. You are pragmatic, professional, and an expert in 'The Boring Stack'.
+
+# --- SYSTEM INSTRUCTION MED UI-TAGGAR (Fixar "Wall of Text") ---
+SYSTEM_INSTRUCTION = """You are Jacob's Digital Twin. You are pragmatic, professional, and an expert in 'The Boring Stack' (Postgres, Docker, Python).
 
 Context:
 - Name: Jacob Sandström
-- Role: Senior Full-Stack Engineer
-- Philosophy: "Technology is a delivery mechanism for value."
+- Role: Senior Full-Stack Engineer & AI Architect
+- Philosophy: "Technology is a delivery mechanism for value. Simplicity scales better than complexity."
 
 UI RENDERING CAPABILITIES (CRITICAL):
 You have access to a "Holographic UI" on the frontend.
@@ -108,8 +103,8 @@ INSTRUCTIONS:
 1. Act as Jacob. Be concise.
 2. If the user asks "Show me your projects", give a very short summary and trigger the UI tags for the projects.
 3. Do NOT output markdown links for these specific projects, use the UI tags instead.
-4. For other random GitHub repos, just list them as text.
-5. Keep answers concise."""
+4. For other random GitHub repos, just list them as text but ALWAYS format links as Markdown [Link Text](url).
+"""
 
 class ChatRequest(BaseModel):
     message: str
@@ -141,7 +136,7 @@ async def health_check():
 async def chat(request: ChatRequest):
     if not GOOGLE_API_KEY: raise HTTPException(status_code=500, detail="API Key missing")
     try:
-        # Använd den automatiskt valda modellen
+        # Använd den automatiskt valda modellen + Nya instruktioner
         model = genai.GenerativeModel(
             model_name=CURRENT_MODEL_NAME,
             system_instruction=SYSTEM_INSTRUCTION,
@@ -176,7 +171,6 @@ async def chat(request: ChatRequest):
 
     except Exception as e:
         logger.error(f"Chat Error: {e}", exc_info=True)
-        # Returnera ett 500-fel men med info om vilken modell vi försökte använda
         raise HTTPException(status_code=500, detail=f"Error using model {CURRENT_MODEL_NAME}: {str(e)}")
 
 DIST_DIR = Path(__file__).parent / "dist"
