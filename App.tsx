@@ -34,12 +34,16 @@ function App() {
     if (!text.trim() || isLoading) return;
 
     const userMessage: ChatMessage = { role: 'user', content: text, isHidden };
+    
+    // VIKTIGT: Vi skapar en ny array med historiken direkt här för att skicka med den
+    const updatedMessages = [...messages, userMessage];
+
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
 
     try {
-      const updatedMessages = [...messages, userMessage]; // Spara temp-variabel
+      // HÄR ÄR FIXEN: Vi skickar med 'updatedMessages' som andra argument
       const rawResponse = await sendMessageToGemini(text, updatedMessages);
       
       // GENERATIVE UI PARSING ENGINE
