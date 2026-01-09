@@ -39,7 +39,8 @@ function App() {
     setIsLoading(true);
 
     try {
-      const rawResponse = await sendMessageToGemini(text);
+      const updatedMessages = [...messages, userMessage]; // Spara temp-variabel
+      const rawResponse = await sendMessageToGemini(text, updatedMessages);
       
       // GENERATIVE UI PARSING ENGINE
       // Parsing "intent tags" from the System Prompt to mimic tool invocation.
