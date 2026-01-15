@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Cpu } from 'lucide-react';
+import { Send, Sparkles, Cpu, User, X } from 'lucide-react'; // Lade till User, X
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -7,15 +7,19 @@ import HolographicCard from './components/HolographicCard';
 import InteractiveTimeline from './components/InteractiveTimeline';
 import SystemStatus from './components/SystemStatus';
 import Dock from './components/Dock';
+import ResumeSidebar from './components/ResumeSidebar'; // Importera denna!
 import { sendMessageToGemini } from './services/geminiService';
 import { ChatMessage, Project } from './types';
-import { RESUME_DATA } from './constants';
+import { RESUME_DATA, QUICK_PROMPTS } from './constants'; // Importera QUICK_PROMPTS
 
 function App() {
+  // State för att visa/dölja profilen
+  const [showProfile, setShowProfile] = useState(false);
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     { 
       role: 'model', 
-      content: "Neural link established. I am Jacob's Digital Twin (v2.0). I can visualize architecture, diff code, and retrieve project data. How can I assist?" 
+      content: "Neural link established. I am Jacob's Digital Twin. I can visualize architecture, diff code, and retrieve project data. How can I assist?" 
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -33,51 +37,60 @@ function App() {
   const handleSendMessage = async (text: string, isHidden: boolean = false) => {
     if (!text.trim() || isLoading) return;
 
-    const userMessage: ChatMessage = { role: 'user', content: text, isHidden };
-    
-    // VIKTIGT: Vi skapar en ny array med historiken direkt här för att skicka med den
-    const updatedMessages = [...messages, userMessage];
+    // Stäng profilen om man börjar chatta, för fokus
+    if (!isHidden) setShowProfile(false);
 
+    const userMessage: ChatMessage = { role: 'user', content: text, isHidden };
+    const currentHistory = [...messages, userMessage]; 
+    
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
 
     try {
-      // HÄR ÄR FIXEN: Vi skickar med 'updatedMessages' som andra argument
-      const rawResponse = await sendMessageToGemini(text, updatedMessages);
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          history: currentHistory.map(m => ({ 
+            role: m.role, 
+            content: m.content 
+          }))
+        })
+      });
+
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
       
-      // GENERATIVE UI PARSING ENGINE
-      // Parsing "intent tags" from the System Prompt to mimic tool invocation.
+      const data = await response.json();
+      const rawResponse = data.response;
+      
       let cleanContent = rawResponse;
       let projectIds: string[] = [];
       let showHistory = false;
       
-      // 1. Check for History Tag
-      if (rawResponse.includes('[SHOW_HISTORY]')) {
-        showHistory = true;
-        cleanContent = cleanContent.replace('[SHOW_HISTORY]', '');
-      }
-
-      // 2. Check for Project Tags (Global match)
-      const projectTagRegex = /\[SHOW_PROJECT:\s*([\w-]+)\]/g;
-      const matches = [...cleanContent.matchAll(projectTagRegex)];
-      
-      if (matches.length > 0) {
-        projectIds = matches.map(m => m[1]);
-        // Remove tags from content
-        cleanContent = cleanContent.replace(projectTagRegex, '');
+      if (data.function_calls) {
+        data.function_calls.forEach((call: any) => {
+          if (call.name === 'get_pinned_repos' && Array.isArray(call.result)) {
+             projectIds = RESUME_DATA.projects.map(p => p.id).slice(0, 2); 
+          }
+          if (call.name === 'get_career_history') {
+            showHistory = true;
+          }
+        });
       }
 
       const botMessage: ChatMessage = {
         role: 'model',
-        content: cleanContent.trim(),
+        content: cleanContent,
         relatedProjectIds: projectIds.length > 0 ? projectIds : undefined,
         showHistory: showHistory
       };
 
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'model', content: "Neural Interface Error. Connection Unstable." }]);
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'model', content: "Error: Could not connect to Digital Twin backend." }]);
     } finally {
       setIsLoading(false);
     }
@@ -85,9 +98,12 @@ function App() {
 
   const handleDockInteraction = (label: string) => {
     if (label === 'Resume') {
-      handleSendMessage("Show me your career history and resume.", true);
+        // Toggle Profile Sidebar istället för att bara chatta
+        setShowProfile(!showProfile);
     } else if (label === 'Projects') {
        handleSendMessage("What projects have you worked on? Show me the details.", true);
+    } else if (label === 'Home') {
+        setShowProfile(false);
     }
   };
 
@@ -96,31 +112,52 @@ function App() {
   };
 
   return (
-    <div className="relative w-full h-screen overflow-hidden font-sans selection:bg-cyan-500/30 selection:text-cyan-100">
+    <div className="relative w-full h-screen overflow-hidden font-sans selection:bg-cyan-500/30 selection:text-cyan-100 bg-[#050505]">
       
-      {/* HUD Elements */}
       <SystemStatus />
+      
+      {/* --- PROFILE SIDEBAR OVERLAY --- */}
+      <AnimatePresence>
+        {showProfile && (
+          <motion.div 
+            initial={{ x: '100%', opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '100%', opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="absolute inset-y-0 right-0 w-full md:w-[480px] z-40 shadow-2xl border-l border-white/10"
+          >
+            <div className="absolute top-4 right-4 z-50">
+                <button 
+                    onClick={() => setShowProfile(false)}
+                    className="p-2 bg-zinc-900/80 rounded-full text-zinc-400 hover:text-white border border-white/10"
+                >
+                    <X className="w-5 h-5" />
+                </button>
+            </div>
+            <ResumeSidebar />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Dock onItemClick={handleDockInteraction} />
 
       {/* Main Content Stage */}
-      <div className="absolute inset-0 max-w-4xl mx-auto pt-20 pb-32 px-4 md:px-6 flex flex-col">
+      <div className={`absolute inset-0 max-w-4xl mx-auto pt-20 pb-32 px-4 md:px-6 flex flex-col transition-all duration-500 ${showProfile ? 'md:pr-[500px] opacity-50 md:opacity-100' : ''}`}>
         
-        {/* Chat Stream */}
-        <div className="flex-1 overflow-y-auto space-y-8 scrollbar-hide pr-2">
+        <div className="flex-1 overflow-y-auto space-y-6 scrollbar-hide pr-2">
           <AnimatePresence initial={false}>
             {messages.filter(msg => !msg.isHidden).map((msg, idx) => (
               <motion.div 
                 key={idx}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
               >
-                {/* Message Bubble */}
                 <div 
-                  className={`max-w-[85%] md:max-w-[70%] backdrop-blur-md px-6 py-4 rounded-2xl text-sm md:text-base leading-relaxed border shadow-lg ${
+                  className={`max-w-[85%] px-6 py-4 rounded-2xl text-sm md:text-base leading-relaxed border ${
                     msg.role === 'user' 
-                      ? 'bg-zinc-800/80 text-white border-zinc-700/50 rounded-br-none' 
-                      : 'glass-panel text-zinc-200 rounded-bl-none'
+                      ? 'bg-zinc-800 text-white border-zinc-700 rounded-br-sm' 
+                      : 'bg-zinc-900/50 backdrop-blur-md text-zinc-200 border-white/10 rounded-bl-sm shadow-xl'
                   }`}
                 >
                   {msg.role === 'model' && (
@@ -128,23 +165,12 @@ function App() {
                       <Cpu className="w-3 h-3" /> Digital Twin
                     </div>
                   )}
-                  
-                  <div className="prose prose-invert prose-p:my-1 prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
-                    <ReactMarkdown 
-                      components={{
-                        strong: ({node, ...props}) => <span className="font-semibold text-cyan-400" {...props} />,
-                        a: ({node, ...props}) => <a className="text-blue-400 hover:text-blue-300 transition-colors" target="_blank" {...props} />
-                      }}
-                    >
-                      {msg.content}
-                    </ReactMarkdown>
+                  <div className="prose prose-invert prose-p:my-1">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 </div>
 
-                {/* COMPONENT REGISTRY: Render Widgets based on "Tool Call" */}
-                
-                {/* 1. Project Grid */}
-                {msg.relatedProjectIds && msg.relatedProjectIds.length > 0 && (
+                {msg.relatedProjectIds && (
                    <div className="w-full mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                      {msg.relatedProjectIds.map(id => {
                        const proj = getProjectDetails(id);
@@ -152,65 +178,63 @@ function App() {
                      })}
                    </div>
                 )}
-
-                {/* 2. Interactive Timeline */}
-                {msg.showHistory && (
-                  <InteractiveTimeline />
-                )}
-
+                {msg.showHistory && <InteractiveTimeline />}
               </motion.div>
             ))}
           </AnimatePresence>
 
           {isLoading && (
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }}
-              className="flex items-start"
-            >
-              <div className="glass-panel rounded-2xl px-5 py-3 flex items-center gap-3">
-                <div className="flex gap-1">
-                  <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
-                  <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse delay-75" />
-                  <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse delay-150" />
-                </div>
-                <span className="text-xs text-zinc-500 font-mono">PROCESSING</span>
-              </div>
-            </motion.div>
+            <div className="flex items-start pl-2">
+               <span className="text-xs text-cyan-500 font-mono animate-pulse">PROCESSING...</span>
+            </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Command Line */}
-        <div className="mt-6 relative z-40">
-           <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-xl blur opacity-0 group-hover:opacity-100 transition duration-500" />
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)}
-                placeholder="Enter command or query..."
-                disabled={isLoading}
-                className="relative w-full bg-[#0a0a0a]/90 backdrop-blur-xl text-white placeholder-zinc-600 rounded-xl pl-6 pr-14 py-4 border border-white/10 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono text-sm"
-              />
-              <button
-                onClick={() => handleSendMessage(inputValue)}
-                disabled={isLoading || !inputValue.trim()}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-zinc-500 hover:text-cyan-400 disabled:opacity-30 transition-colors"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-           </div>
+        {/* --- INPUT AREA WITH SUGGESTION CHIPS --- */}
+        <div className="mt-4 relative z-40">
            
-           <div className="mt-3 flex justify-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
-              <span className="text-[10px] text-zinc-600 font-mono flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> NEURAL INTERFACE ONLINE
-              </span>
+           {/* Suggestion Chips */}
+           {!isLoading && messages.length < 3 && (
+             <div className="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">
+               {QUICK_PROMPTS.map((prompt, i) => (
+                 <button
+                   key={i}
+                   onClick={() => handleSendMessage(prompt)}
+                   className="whitespace-nowrap px-3 py-1.5 bg-zinc-800/50 hover:bg-cyan-950/30 border border-zinc-700 hover:border-cyan-500/50 rounded-full text-xs text-zinc-300 hover:text-cyan-300 transition-all"
+                 >
+                   {prompt}
+                 </button>
+               ))}
+               <button
+                   onClick={() => setShowProfile(true)}
+                   className="whitespace-nowrap px-3 py-1.5 bg-zinc-800/50 hover:bg-purple-950/30 border border-zinc-700 hover:border-purple-500/50 rounded-full text-xs text-zinc-300 hover:text-purple-300 transition-all flex items-center gap-1"
+               >
+                   <User className="w-3 h-3" /> Who is Jacob?
+               </button>
+             </div>
+           )}
+
+           <div className="relative">
+             <input
+               type="text"
+               value={inputValue}
+               onChange={(e) => setInputValue(e.target.value)}
+               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(inputValue)}
+               placeholder="Init command..."
+               disabled={isLoading}
+               className="w-full bg-zinc-900/80 backdrop-blur text-white placeholder-zinc-600 rounded-xl px-6 py-4 border border-white/10 focus:border-cyan-500/50 outline-none font-mono text-sm shadow-2xl pr-12"
+             />
+             <button
+               onClick={() => handleSendMessage(inputValue)}
+               disabled={isLoading || !inputValue.trim()}
+               className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-zinc-500 hover:text-cyan-400 disabled:opacity-30"
+             >
+               <Send className="w-5 h-5" />
+             </button>
            </div>
         </div>
       </div>
-
     </div>
   );
 }
